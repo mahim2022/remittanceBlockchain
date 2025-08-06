@@ -1,95 +1,45 @@
 "use client";
-import "../globals.css";
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { WalletButton } from '@rainbow-me/rainbowkit';
-// import { useAddRecentTransaction } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
-import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import React, { useState } from 'react';
+import { ConnectButton, WalletButton } from '@rainbow-me/rainbowkit';
+import { useAccount, useBalance } from 'wagmi';
+import { ethers, isAddress } from 'ethers';
 import deployed from '../../../contracts/deployed.json';
-import { isAddress } from 'ethers';
-import { useBalance } from 'wagmi';
 
-
-
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  MenuItem,
+  Paper,
+  Divider,
+} from '@mui/material';
+import SearchAppBar from '../../../components/SearchAppBar';
 
 const countries = [
- { code: "US", name: "United States", stablecoin: "USDC" },
+  { code: "US", name: "United States", stablecoin: "USDC" },
   { code: "EU", name: "European Union", stablecoin: "EURC" },
   { code: "GB", name: "United Kingdom", stablecoin: "GBPT" },
   { code: "SG", name: "Singapore", stablecoin: "XSGD" },
   { code: "JP", name: "Japan", stablecoin: "JPYC" },
   { code: "MY", name: "Malaysia", stablecoin: "MYRC" },
 ];
-const currencies = ['GBPT', 'EURC', 'USDC'];
 
+const currencies = ['GBPT', 'EURC', 'USDC',"XSGD","JPYC","MYRC"];
 
-function homepage() {
+function Homepage() {
   const [sourceCountry, setSourceCountry] = useState('US');
   const [destinationCountry, setDestinationCountry] = useState('GB');
-  // const addRecentTransaction = useAddRecentTransaction();
   const { address, isConnected } = useAccount();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [withdrawCurrency, setWithdrawCurrency] = useState('GBPT');
   const [withdrawStatus, setWithdrawStatus] = useState('');
-  const { data, isError, isLoading } = useBalance({address})
-  // const [walletBalance, setWalletBalance] = useState("");
-  // const { data: walletClient } = useWalletClient();
+  const { data } = useBalance({ address });
 
-// async function handleRemit() {
-//   if (!walletClient || !isConnected) {
-//     setStatus('❌ Wallet not connected.');
-//     return;
-//   }
-
-//   if (!isAddress(recipient)) {
-//     setStatus('❌ Invalid recipient address.');
-//     return;
-//   }
-
-//   if (!amount) {
-//     setStatus('❌ Amount required.');
-//     return;
-//   }
-
-//   try {
-//     setStatus('⏳ Sending transaction...');
-
-//     const hash = await writeContract(walletClient, {
-//       address: deployed.Remittance as `0x${string}`,
-//       abi: remittanceAbi.abi,
-//       functionName: 'sendRemittance',
-//       args: [
-//         sourceCountry,
-//         destinationCountry,
-//         recipient as `0x${string}`,
-//         parseUnits(amount, 6), // assuming USDC has 6 decimals
-//         `0x${Buffer.from(`frontend_tx_${Date.now()}`).toString('hex').padEnd(64, '0')}` as `0x${string}`,
-//       ],
-//     });
-//      const { data, isLoading, isSuccess, write } = useWriteContract({
-//     address: '0xecb504d39723b0be0e3a9aa33d646642d1051ee1',
-//     abi: wagmigotchiABI,
-//     functionName: 'feed',
-//   })
-
-//     setStatus('📡 Waiting for confirmation...');
-
-//     // const receipt = await waitForTransactionReceipt(walletClient, { hash });
-
-//     // if (receipt.status === 'success') {
-//     //   setStatus('✅ Remittance sent successfully!');
-//     // } else {
-//     //   setStatus('⚠️ Transaction reverted.');
-//     // }
-//   } catch (err: any) {
-//     console.error(err);
-//     setStatus(`❌ Error: ${err.shortMessage || err.message}`);
-//   }
-// }
-   async function handleRemit() {
+  async function handleRemit() {
     if (!window.ethereum || !isConnected) return;
     setStatus('Processing...');
 
@@ -112,19 +62,16 @@ function homepage() {
 
     try {
       const value = ethers.parseUnits(amount, 6);
-      // const value = ethers.parseEther(amount.toString());
-
       console.log(value);
-      
-    if (!isAddress(recipient)) {
-  setStatus('❌ Invalid recipient address.');
-  return;
-}
 
-      const approval= await usdc.approve(deployed.Remittance, value);
+      if (!isAddress(recipient)) {
+        setStatus('❌ Invalid recipient address.');
+        return;
+      }
+
+      const approval = await usdc.approve(deployed.Remittance, value);
       await approval.wait();
-      console.log('✅ USDC approved');
-      console.log(sourceCountry,destinationCountry);
+
       const tx = await remittance.sendRemittance(
         sourceCountry,
         destinationCountry,
@@ -135,131 +82,186 @@ function homepage() {
 
       await tx.wait();
       setStatus('✅ Remittance sent successfully!');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setStatus('❌ Transaction failed.');
     }
   }
+  
 
-  function withdraw(){
 
+
+  async function handleWithdraw(currencyCode: string) {
+  if (!window.ethereum || !isConnected) return;
+  setStatus('Processing withdrawal...');
+
+  try {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+
+    const remittance = new ethers.Contract(
+      deployed.Remittance,
+      ['function withdrawRemittance(address) public',
+      ], 
+      signer
+    );
+    // const tokenAddress = await remittance.getStablecoinForCountry("US");
+    const tokenAddress = deployed[withdrawCurrency as keyof typeof deployed];;
+    
+    if (!tokenAddress || !ethers.isAddress(tokenAddress)) {
+      setStatus('❌ Invalid token address.');
+      return;
+    }
+
+    const tx = await remittance.withdrawRemittance(tokenAddress);
+
+    await tx.wait();
+
+    setStatus('✅ Withdrawal successful!');
+  } catch (err) {
+    console.error(err);
+    setStatus('❌ Withdrawal failed.');
   }
+}
+
 
   return (
-    < div >
-
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        padding: 12,
-      }}
-    >
-      <ConnectButton />
-      <WalletButton wallet="metamask" />
-    </div>
-    <div className="min-h-screen bg-gray-50 p-6">
-      {/* Connect Wallet Button
-      <div className="flex justify-end mb-6">
+    <>
+    <SearchAppBar></SearchAppBar>
+    <Container maxWidth="sm">
+      {/* <Box display="flex" justifyContent="flex-end" my={2}>
         <ConnectButton />
-      </div> */}
+        <WalletButton wallet="metamask" />
+      </Box> */}
 
-      {/* Card Container */}
-      <div className="max-w-xl mx-auto bg-white shadow-xl rounded-2xl p-6">
-        <h1 className="text-xl font-semibold mb-4">💸 Send Remittance</h1>
+      <Paper elevation={3} sx={{ p: 4, borderRadius: 3 }}>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          💸 Send Remittance
+        </Typography>
 
         {!isConnected ? (
-          <p className="text-gray-600">Please connect your wallet to continue.</p>
+          <Typography color="text.secondary">Please connect your wallet to continue.</Typography>
         ) : (
           <>
-            <input
-              type="text"
-              placeholder="Recipient Address"
+            <TextField
+              label="Recipient Address"
+              variant="outlined"
+              fullWidth
+              margin="normal"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
-              className="w-full border p-2 mb-3 rounded"
             />
-            <select
-  className="w-full border p-2 mb-3 rounded"
-  value={sourceCountry}
-  onChange={(e) => setSourceCountry(e.target.value)}
->
-  <option disabled>From Country</option>
-  {countries.map((c) => (
-    <option key={c.code} value={c.code}>{c.name}</option>
-  ))}
-</select>
 
-<select
-  className="w-full border p-2 mb-3 rounded"
-  value={destinationCountry}
-  onChange={(e) => setDestinationCountry(e.target.value)}
->
-  <option disabled>To Country</option>
-  {countries.map((c) => (
-    <option key={c.code} value={c.code}>{c.name}</option>
-  ))}
-</select>
-            <input
-              type="text"
-              placeholder="Amount in USDC"
+            <TextField
+              select
+              label="From Country"
+              value={sourceCountry}
+              onChange={(e) => setSourceCountry(e.target.value)}
+              fullWidth
+              margin="normal"
+            >
+              {countries.map((c) => (
+                <MenuItem key={c.code} value={c.code}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="To Country"
+              value={destinationCountry}
+              onChange={(e) => setDestinationCountry(e.target.value)}
+              fullWidth
+              margin="normal"
+            >
+              {countries.map((c) => (
+                <MenuItem key={c.code} value={c.code}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Amount in USDC"
+              variant="outlined"
+              fullWidth
+              margin="normal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full border p-2 mb-4 rounded"
             />
-            <button
+
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              sx={{ mt: 2 }}
               onClick={handleRemit}
-              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
             >
               Send Remittance
-            </button>
+            </Button>
 
             {status && (
-              <p className="mt-4 text-sm text-gray-700 font-medium">{status}</p>
+              <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                {status}
+              </Typography>
             )}
           </>
         )}
-      </div>
-       {/* Withdraw Card */}
-<div className="max-w-xl mx-auto bg-white shadow-xl rounded-2xl p-6 mt-10">
-  <h2 className="text-xl font-semibold mb-4">🏧 Withdraw Funds</h2>
+      </Paper>
 
-  <select
-    className="w-full border p-2 mb-4 rounded"
-    value={withdrawCurrency}
-    onChange={(e) => setWithdrawCurrency(e.target.value)}
-  >
-    {currencies.map((currency) => (
-      <option key={currency} value={currency}>
-        {currency}
-      </option>
-    ))}
-  </select>
+      <Paper elevation={3} sx={{ p: 4, borderRadius: 3, mt: 5 }}>
+        <Typography variant="h6" fontWeight="bold" gutterBottom>
+          🏧 Withdraw Funds
+        </Typography>
 
-  <p className="mb-2 text-gray-600">Pending Balance: <strong>≈ {data?.value} {withdrawCurrency}</strong></p>
+        <TextField
+          select
+          label="Select Currency"
+          value={withdrawCurrency}
+          onChange={(e) => setWithdrawCurrency(e.target.value)}
+          fullWidth
+          margin="normal"
+        >
+          {currencies.map((currency) => (
+            <MenuItem key={currency} value={currency}>
+              {currency}
+            </MenuItem>
+          ))}
+        </TextField>
+        
+          <TextField
+    label="Amount"
+    value={data?.value || ''}
+    disabled
+    fullWidth
+    margin="normal"
+    helperText="You will withdraw the full available amount"
+  />
 
-  {/* <button
-    onClick={() => {
-      withdraw();
-    }}
-    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
-  >
-    Withdraw
-  </button> */}
 
-  <button className="btn w-64 rounded-full">Button</button>
+        <Typography sx={{ mb: 2 }} color="text.secondary">
+          Pending Balance: <strong>≈ {data?.value} {withdrawCurrency}</strong>
+        </Typography>
 
+        <Button
+          variant="outlined"
+          fullWidth
+          sx={{ borderRadius: '999px' }}
+          onClick={() => handleWithdraw(withdrawCurrency)}
+        >
+          Withdraw
+        </Button>
 
-  {withdrawStatus && (
-    <p className="mt-4 text-sm text-gray-700 font-medium">{withdrawStatus}</p>
-  )}
-</div>
-    </div>
-   
-
-    
-    </div>
+        {withdrawStatus && (
+          <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+            {withdrawStatus}
+          </Typography>
+        )}
+      </Paper>
+    </Container></>
   );
+  
 }
 
-export default homepage;
+export default Homepage;

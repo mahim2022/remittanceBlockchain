@@ -1,202 +1,249 @@
 "use client";
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { WalletButton } from '@rainbow-me/rainbowkit';
-// import { useAddRecentTransaction } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
-import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
-import deployed from '../../contracts/deployed.json';
-import { isAddress } from 'ethers';
+import * as React from 'react';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import CssBaseline from '@mui/material/CssBaseline';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Divider from '@mui/material/Divider';
+import FormLabel from '@mui/material/FormLabel';
+import FormControl from '@mui/material/FormControl';
+import Link from '@mui/material/Link';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import Stack from '@mui/material/Stack';
+import MuiCard from '@mui/material/Card';
+import { styled } from '@mui/material/styles';
+import ForgotPassword from '../../components/ForgotPassword';
+import AppTheme from '../../shared-theme/AppTheme';
+import ColorModeSelect from '../../shared-theme/AppTheme';
+import { GoogleIcon, FacebookIcon, SitemarkIcon } from '../../components/CustomIcons';
+import { useRouter } from 'next/navigation'; // ✅ App Router version
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 
-const countries = [
-  { code: 'US', name: 'United States' },
-  { code: 'GB', name: 'United Kingdom' },
-  { code: 'BD', name: 'Bangladesh' },
-  { code: 'IN', name: 'India' },
-  { code: 'NG', name: 'Nigeria' },
-  { code: 'PH', name: 'Philippines' },
-  { code: 'PK', name: 'Pakistan' },
-];
-const currencies = ['GBPT', 'EURC', 'USDC'];
+const Card = styled(MuiCard)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignSelf: 'center',
+  width: '100%',
+  padding: theme.spacing(4),
+  gap: theme.spacing(2),
+  margin: 'auto',
+  [theme.breakpoints.up('sm')]: {
+    maxWidth: '450px',
+  },
+  boxShadow:
+    'hsla(220, 30%, 5%, 0.05) 0px 5px 15px 0px, hsla(220, 25%, 10%, 0.05) 0px 15px 35px -5px',
+  ...theme.applyStyles('dark', {
+    boxShadow:
+      'hsla(220, 30%, 5%, 0.5) 0px 5px 15px 0px, hsla(220, 25%, 10%, 0.08) 0px 15px 35px -5px',
+  }),
+}));
 
+const SignInContainer = styled(Stack)(({ theme }) => ({
+  height: 'calc((1 - var(--template-frame-height, 0)) * 100dvh)',
+  minHeight: '100%',
+  padding: theme.spacing(2),
+  [theme.breakpoints.up('sm')]: {
+    padding: theme.spacing(4),
+  },
+  '&::before': {
+    content: '""',
+    display: 'block',
+    position: 'absolute',
+    zIndex: -1,
+    inset: 0,
+    backgroundImage:
+      'radial-gradient(ellipse at 50% 50%, hsl(210, 100%, 97%), hsl(0, 0%, 100%))',
+    backgroundRepeat: 'no-repeat',
+    ...theme.applyStyles('dark', {
+      backgroundImage:
+        'radial-gradient(at 50% 50%, hsla(210, 100%, 16%, 0.5), hsl(220, 30%, 5%))',
+    }),
+  },
+}));
 
-function Page() {
-  const [sourceCountry, setSourceCountry] = useState('US');
-  const [destinationCountry, setDestinationCountry] = useState('GB');
-  // const addRecentTransaction = useAddRecentTransaction();
-  const { address, isConnected } = useAccount();
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
-  const [status, setStatus] = useState('');
-  const [withdrawCurrency, setWithdrawCurrency] = useState('GBPT');
-  const [withdrawStatus, setWithdrawStatus] = useState('');
+export default function SignIn(props: { disableCustomTheme?: boolean }) {
+  const router = useRouter();
+  const [emailError, setEmailError] = React.useState(false);
+  const [emailErrorMessage, setEmailErrorMessage] = React.useState('');
+  const [passwordError, setPasswordError] = React.useState(false);
+  const [passwordErrorMessage, setPasswordErrorMessage] = React.useState('');
+  const [open, setOpen] = React.useState(false);
 
-  const [walletBalance, setWalletBalance] = useState('');
-  const [pendingBalance, setPendingBalance] = useState('');
+  const handleClickOpen = () => {
+    setOpen(true);
+  };
 
+  const handleClose = () => {
+    setOpen(false);
+  };
 
-   async function handleRemit() {
-    if (!window.ethereum || !isConnected) return;
-    setStatus('Processing...');
-
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-
-    const usdc = new ethers.Contract(
-      deployed.USDC,
-      ['function approve(address,uint256) public returns (bool)'],
-      signer
-    );
-
-    const remittance = new ethers.Contract(
-      deployed.Remittance,
-      [
-        'function sendRemittance(string,string,address,uint256,bytes32) public',
-      ],
-      signer
-    );
-
-    try {
-      const value = ethers.parseUnits(amount, 6);
-      console.log(value);
-      
-    if (!isAddress(recipient)) {
-  setStatus('❌ Invalid recipient address.');
-  return;
-}
-
-      const approval= await usdc.approve(deployed.Remittance, value);
-      await approval.wait();
-      console.log('✅ USDC approved');
-      const tx = await remittance.sendRemittance(
-        sourceCountry,
-        destinationCountry,
-        recipient,
-        value,
-        ethers.id('frontend_tx_' + Date.now())
-      );
-
-      await tx.wait();
-      setStatus('✅ Remittance sent successfully!');
-    } catch (err: any) {
-      console.error(err);
-      setStatus('❌ Transaction failed.');
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    if (emailError || passwordError) {
+      event.preventDefault();
+      return;
     }
+    const data = new FormData(event.currentTarget);
+    console.log({
+      email: data.get('email'),
+      password: data.get('password'),
+    });
+  };
+
+  const validateInputs = () => {
+    const email = document.getElementById('email') as HTMLInputElement;
+    const password = document.getElementById('password') as HTMLInputElement;
+
+    let isValid = true;
+
+    if (!email.value || !/\S+@\S+\.\S+/.test(email.value)) {
+      setEmailError(true);
+      setEmailErrorMessage('Please enter a valid email address.');
+      isValid = false;
+    } else {
+      setEmailError(false);
+      setEmailErrorMessage('');
+    }
+
+    if (!password.value || password.value.length < 6) {
+      setPasswordError(true);
+      setPasswordErrorMessage('Password must be at least 6 characters long.');
+      isValid = false;
+    } else {
+      setPasswordError(false);
+      setPasswordErrorMessage('');
+    }
+
+    return isValid;
+  };
+
+  const handleDemoSignin=()=>{
+ 
+    router.push('/homepage');
   }
 
   return (
-    <>
-
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        padding: 12,
-      }}
-    >
-      <ConnectButton />
-      <WalletButton wallet="metamask" />
-    </div>
-    <div className="min-h-screen bg-gray-50 p-6">
-      {/* Connect Wallet Button
-      <div className="flex justify-end mb-6">
-        <ConnectButton />
-      </div> */}
-
-      {/* Card Container */}
-      <div className="max-w-xl mx-auto bg-white shadow-xl rounded-2xl p-6">
-        <h1 className="text-xl font-semibold mb-4">💸 Send Remittance</h1>
-
-        {!isConnected ? (
-          <p className="text-gray-600">Please connect your wallet to continue.</p>
-        ) : (
-          <>
-            <input
-              type="text"
-              placeholder="Recipient Address"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              className="w-full border p-2 mb-3 rounded"
+    <AppTheme {...props}>
+      <CssBaseline enableColorScheme />
+      <SignInContainer direction="column" justifyContent="space-between">
+        {/* <ColorModeSelect sx={{ position: 'fixed', top: '1rem', right: '1rem' }} /> */}
+        <Card variant="outlined">
+          <CurrencyExchangeIcon></CurrencyExchangeIcon>
+          <Typography
+            component="h1"
+            variant="h4"
+            sx={{ width: '100%', fontSize: 'clamp(2rem, 10vw, 2.15rem)' }}
+          >
+            Sign in
+          </Typography>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            noValidate
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              width: '100%',
+              gap: 2,
+            }}
+          >
+            <FormControl>
+              <FormLabel htmlFor="email">Email</FormLabel>
+              <TextField
+                error={emailError}
+                helperText={emailErrorMessage}
+                id="email"
+                type="email"
+                name="email"
+                placeholder="your@email.com"
+                autoComplete="email"
+                autoFocus
+                required
+                fullWidth
+                variant="outlined"
+                color={emailError ? 'error' : 'primary'}
+              />
+            </FormControl>
+            <FormControl>
+              <FormLabel htmlFor="password">Password</FormLabel>
+              <TextField
+                error={passwordError}
+                helperText={passwordErrorMessage}
+                name="password"
+                placeholder="••••••"
+                type="password"
+                id="password"
+                autoComplete="current-password"
+                autoFocus
+                required
+                fullWidth
+                variant="outlined"
+                color={passwordError ? 'error' : 'primary'}
+              />
+            </FormControl>
+            <FormControlLabel
+              control={<Checkbox value="remember" color="primary" />}
+              label="Remember me"
             />
-            <select
-  className="w-full border p-2 mb-3 rounded"
-  value={sourceCountry}
-  onChange={(e) => setSourceCountry(e.target.value)}
->
-  <option disabled>From Country</option>
-  {countries.map((c) => (
-    <option key={c.code} value={c.code}>{c.name}</option>
-  ))}
-</select>
-
-<select
-  className="w-full border p-2 mb-3 rounded"
-  value={destinationCountry}
-  onChange={(e) => setDestinationCountry(e.target.value)}
->
-  <option disabled>To Country</option>
-  {countries.map((c) => (
-    <option key={c.code} value={c.code}>{c.name}</option>
-  ))}
-</select>
-            <input
-              type="text"
-              placeholder="Amount in USDC"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full border p-2 mb-4 rounded"
-            />
-            <button
-              onClick={handleRemit}
-              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
+            <ForgotPassword open={open} handleClose={handleClose} />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              onClick={validateInputs}
             >
-              Send Remittance
-            </button>
-
-            {status && (
-              <p className="mt-4 text-sm text-gray-700 font-medium">{status}</p>
-            )}
-          </>
-        )}
-      </div>
-       {/* Withdraw Card */}
-<div className="max-w-xl mx-auto bg-white shadow-xl rounded-2xl p-6 mt-10">
-  <h2 className="text-xl font-semibold mb-4">🏧 Withdraw Funds</h2>
-
-  <select
-    className="w-full border p-2 mb-4 rounded"
-    value={withdrawCurrency}
-    onChange={(e) => setWithdrawCurrency(e.target.value)}
-  >
-    {currencies.map((currency) => (
-      <option key={currency} value={currency}>
-        {currency}
-      </option>
-    ))}
-  </select>
-
-  <p className="mb-2 text-gray-600">Pending Balance: <strong>≈ {walletBalance} {withdrawCurrency}</strong></p>
-
-  <button
-    onClick={() => {
-      setWithdrawStatus(`✅ Withdrew all available ${withdrawCurrency}`);
-      console.log(address);
-    }}
-    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
-  >
-    Withdraw
-  </button>
-
-  {withdrawStatus && (
-    <p className="mt-4 text-sm text-gray-700 font-medium">{withdrawStatus}</p>
-  )}
-</div>
-    </div>
-   
-
-    
-    </>
+              Sign in
+            </Button>
+            <Button
+              type="button"
+              fullWidth
+              variant="contained"
+              onClick={handleDemoSignin}
+            >
+              Demo Sign in
+            </Button>
+            <Link
+              component="button"
+              type="button"
+              onClick={handleClickOpen}
+              variant="body2"
+              sx={{ alignSelf: 'center' }}
+            >
+              Forgot your password?
+            </Link>
+          </Box>
+          <Divider>or</Divider>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => alert('Sign in with Google')}
+              startIcon={<GoogleIcon />}
+            >
+              Sign in with Google
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => alert('Sign in with Facebook')}
+              startIcon={<FacebookIcon />}
+            >
+              Sign in with Facebook
+            </Button>
+            <Typography sx={{ textAlign: 'center' }}>
+              Don&apos;t have an account?{' '}
+              <Link
+                href="/material-ui/getting-started/templates/sign-in/"
+                variant="body2"
+                sx={{ alignSelf: 'center' }}
+              >
+                Sign up
+              </Link>
+            </Typography>
+          </Box>
+        </Card>
+      </SignInContainer>
+    </AppTheme>
   );
 }
-
-export default Page;
