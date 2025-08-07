@@ -1,6 +1,5 @@
 "use client";
 import React, { useState } from 'react';
-import { ConnectButton, WalletButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useBalance } from 'wagmi';
 import { ethers, isAddress } from 'ethers';
 import deployed from '../../../contracts/deployed.json';
@@ -14,6 +13,7 @@ import {
   MenuItem,
   Paper,
   Divider,
+  Grid
 } from '@mui/material';
 import SearchAppBar from '../../../components/SearchAppBar';
 
@@ -34,10 +34,15 @@ function Homepage() {
   const { address, isConnected } = useAccount();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [privateKey, setPrivateKey] = useState('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
   const [status, setStatus] = useState('');
   const [withdrawCurrency, setWithdrawCurrency] = useState('GBPT');
   const [withdrawStatus, setWithdrawStatus] = useState('');
   const { data } = useBalance({ address });
+
+  const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+  const signer = new ethers.Wallet(privateKey, provider);
+
 
   async function handleRemit() {
     if (!window.ethereum || !isConnected) return;
@@ -89,6 +94,59 @@ function Homepage() {
   }
   
 
+  async function handleRemitEthers (pKey: string) {
+  if (!isConnected) return;
+  setStatus("Processing...");
+  // const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+  // const signer = new ethers.Wallet(pKey, provider);
+
+  const usdc = new ethers.Contract(
+    deployed.USDC,
+    ["function approve(address,uint256) public returns (bool)"],
+    signer
+  );
+
+  const remittance = new ethers.Contract(
+    deployed.Remittance,
+    [
+      "function sendRemittance(string,string,address,uint256,bytes32) public"
+    ],
+    signer
+  );
+
+  try {
+    const value = ethers.parseUnits(amount, 6);
+
+    if (!isAddress(recipient)) {
+      setStatus("❌ Invalid recipient address.");
+      return;
+    }
+
+     // ✅ Get the correct current nonce manually
+    const nonce = await provider.getTransactionCount(signer.address, "latest");
+
+    const approval = await usdc.approve(deployed.Remittance, value , {nonce});
+    await approval.wait();
+
+    const tx = await remittance.sendRemittance(
+      sourceCountry,
+      destinationCountry,
+      recipient,
+      value,
+      ethers.id("frontend_tx_" + Date.now()),
+      {
+        nonce: nonce + 1, // nonce = N + 1
+      }
+    );
+
+    await tx.wait();
+    setStatus(`✅ Remittance sent! Tx: ${tx.hash}`);
+  } catch (err: any) {
+    console.error(err);
+    setStatus("❌ Transaction failed.");
+  }
+}
+
 
 
   async function handleWithdraw(currencyCode: string) {
@@ -123,17 +181,53 @@ function Homepage() {
     setStatus('❌ Withdrawal failed.');
   }
 }
+  
 
+async function handleWithdrawEthers(currencyCode: string) {
+  setStatus('Processing withdrawal...');
+
+  try {
+
+    const remittance = new ethers.Contract(
+      deployed.Remittance,
+      [
+        'function withdrawRemittance(address) public',
+      ],
+      signer
+    );
+
+    // You map from currency code to address
+    const tokenAddress = deployed[currencyCode as keyof typeof deployed];
+
+    if (!tokenAddress || !ethers.isAddress(tokenAddress)) {
+      setStatus('❌ Invalid token address.');
+      return;
+    }
+
+    // Optional: manually manage nonce if you're seeing nonce errors
+    const nonce = await provider.getTransactionCount(signer.address, 'latest');
+
+    const tx = await remittance.withdrawRemittance(tokenAddress, {
+      nonce
+    });
+
+    await tx.wait();
+
+    setWithdrawStatus(`✅ Withdrawal successful! Tx: ${tx.hash}`);
+  } catch (err) {
+    console.error(err);
+    setWithdrawStatus('❌ Withdrawal failed.');
+  }
+}
 
   return (
     <>
     <SearchAppBar></SearchAppBar>
-    <Container maxWidth="sm">
-      {/* <Box display="flex" justifyContent="flex-end" my={2}>
-        <ConnectButton />
-        <WalletButton wallet="metamask" />
-      </Box> */}
 
+    <Container maxWidth="lg">
+
+      <Grid container spacing ={5}>
+      <Grid size={6}>
       <Paper elevation={3} sx={{ p: 4, borderRadius: 3 }}>
         <Typography variant="h5" fontWeight="bold" gutterBottom>
           💸 Send Remittance
@@ -191,6 +285,15 @@ function Homepage() {
               onChange={(e) => setAmount(e.target.value)}
             />
 
+            <TextField
+              label="Private Key (Only for Ethers Transfer)"
+              variant="outlined"
+              fullWidth
+              margin="normal"
+              value={privateKey}
+              onChange={(e) => setPrivateKey(e.target.value)}
+            />
+
             <Button
               variant="contained"
               color="primary"
@@ -198,7 +301,17 @@ function Homepage() {
               sx={{ mt: 2 }}
               onClick={handleRemit}
             >
-              Send Remittance
+              Send Remittance (Metamask)
+            </Button>
+
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              sx={{ mt: 2 }}
+              onClick={()=>{handleRemitEthers(privateKey)}}
+            >
+              Send Remittance (Ethers locally)
             </Button>
 
             {status && (
@@ -209,7 +322,8 @@ function Homepage() {
           </>
         )}
       </Paper>
-
+        </Grid>
+        <Grid size={6}>
       <Paper elevation={3} sx={{ p: 4, borderRadius: 3, mt: 5 }}>
         <Typography variant="h6" fontWeight="bold" gutterBottom>
           🏧 Withdraw Funds
@@ -253,12 +367,23 @@ function Homepage() {
           Withdraw
         </Button>
 
+         <Button
+          variant="outlined"
+          fullWidth
+          sx={{ borderRadius: '999px' }}
+          onClick={() => handleWithdrawEthers(withdrawCurrency)}
+        >
+          Withdraw (Ethers Locally)
+        </Button>
+
         {withdrawStatus && (
           <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
             {withdrawStatus}
           </Typography>
         )}
       </Paper>
+      </Grid>
+      </Grid>
     </Container></>
   );
   
